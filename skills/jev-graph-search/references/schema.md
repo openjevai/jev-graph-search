@@ -74,7 +74,7 @@ Semantic search sends the user query and placement sends its text or memory.
 Semantic audit sends bounded passages from selected pages as query and
 candidate data. Requests include only selected bounded page titles, aliases,
 and content excerpts needed for scoring and go to the selected TypeSafe
-(`https://api.typesafe.ai`) or OpenRouter (`https://openrouter.ai`) provider.
+(`https://api.typesafe.ai`), OpenRouter (`https://openrouter.ai`), or OpenJEV (`https://api.openjev.sh`) provider.
 Explain the transfer before first semantic use unless already clear from the
 request or setup. Local input does not imply a local model; `--offline` keeps
 ranking local. A local graph read does not authorize sending the entire

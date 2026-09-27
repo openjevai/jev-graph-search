@@ -4,6 +4,8 @@ Jev Graph Search helps an AI agent find useful notes and passages in a local Obs
 
 Run it from the terminal or install the agent skill. An optional JSON snapshot is supported as well. See [Jev](https://docs.typesafe.ai/introduction) for the ranking service.
 
+**OpenJEV support:** Jev is built by [TypeSafe](https://typesafe.ai). This fork keeps TypeSafe as the default and adds optional support for [OpenJEV](https://openjev.sh), a free community gateway to the same Jev model — set `OPENJEV_API_KEY` (or `JEVGRAPH_PROVIDER=openjev`) to use it. Original project: https://github.com/Emlembow/jev-graph-search by @Emlembow.
+
 [Get started](#get-started) · [Obsidian and Logseq](#obsidian-and-logseq) · [Agent skill](#agent-skill) · [Documentation](#documentation)
 
 ![Tax-code benchmark: source recall without versus with Jev is 33.2% versus 73.2% at top 1, 53.5% versus 80.1% at top 3, and 63.9% versus 81.8% at top 5.](assets/readme/retrieval-quality.png)
@@ -110,7 +112,7 @@ jev-graph-search audit --input ./logseq-graph --offline
 ## Configuration
 
 - Interactive setup: `jev-graph-search setup`.
-- Environment setup: export `TYPESAFE_API_KEY` or `OPENROUTER_API_KEY`, then run `jev-graph-search setup --from-env` to persist it.
+- Environment setup: export `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`, or `OPENJEV_API_KEY`, then run `jev-graph-search setup --from-env` to persist it.
 - Diagnostics: `jev-graph-search config` and `jev-graph-search doctor` show redacted configuration.
 - Cache: semantic scores are cached; `--no-cache` requests fresh scores.
 - Local search: `--offline` explicitly selects lexical ranking.

@@ -36,7 +36,7 @@ Semantic `search` sends the user query and `place` sends its text or memory.
 `audit --semantic` sends bounded selected-page passages as query and candidate
 data. Each request includes only selected page titles, bounded aliases, and
 bounded content excerpts for scoring. TypeSafe uses `https://api.typesafe.ai`; OpenRouter
-uses `https://openrouter.ai`. Explain this transfer before first semantic use
+uses `https://openrouter.ai`; OpenJEV uses `https://api.openjev.sh`. Explain this transfer before first semantic use
 unless already clear from the request or setup. Local input does not imply a
 local model; use `--offline` to keep ranking local. A local graph read does not
 authorize sending an entire workspace. Never put API keys, tokens, or other

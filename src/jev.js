@@ -10,17 +10,18 @@ const rules = {
   placement: ['Is the named existing page an appropriate place to append the query memory without changing its topic?', 'The memory is directly relevant to the existing page purpose and belongs alongside its contents.', 'The page has a different purpose or overlap is superficial.']
 };
 export function createJevClient({ provider = 'typesafe', apiKey, model, baseUrl, fetchImpl = globalThis.fetch, timeoutMs = 10000, maxRetries = 2, concurrency = 4, batchSize = 12, retryBaseMs = 200 } = {}) {
-  if (!['typesafe', 'openrouter'].includes(provider)) throw new Error('Jev provider must be typesafe or openrouter');
-  apiKey ??= provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY;
-  model ||= provider === 'openrouter' ? 'typesafe/jev-1.13' : 'jev-latest';
+  if (!['typesafe', 'openrouter', 'openjev'].includes(provider)) throw new Error('Jev provider must be typesafe, openrouter, or openjev');
+  apiKey ??= provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : provider === 'openjev' ? process.env.OPENJEV_API_KEY : process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY;
+  model ||= provider === 'openrouter' ? 'typesafe/jev-1.13' : provider === 'openjev' ? 'openjev' : 'jev-latest';
   if (typeof model !== 'string' || !model.trim()) throw new Error('Jev model must be a nonempty string');
   integer(timeoutMs, 'timeoutMs', 1, 120000); integer(maxRetries, 'maxRetries', 0, 5); integer(concurrency, 'concurrency', 1, 8); integer(batchSize, 'batchSize', 1, 20); integer(retryBaseMs, 'retryBaseMs', 0, 10000);
-  const endpoint = baseUrl ? new URL(baseUrl) : new URL(provider === 'openrouter' ? 'https://openrouter.ai/api/alpha/decisions' : 'https://api.typesafe.ai/v1/systemone');
+  const defaultEndpoint = provider === 'openrouter' ? 'https://openrouter.ai/api/alpha/decisions' : provider === 'openjev' ? 'https://api.openjev.sh/v1/systemone' : 'https://api.typesafe.ai/v1/systemone';
+  const endpoint = baseUrl ? new URL(baseUrl) : new URL(defaultEndpoint);
   if (endpoint.username || endpoint.password) throw new Error('Jev endpoint must not contain credentials');
   if (endpoint.protocol !== 'https:' && !(['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname) && endpoint.protocol === 'http:')) throw new Error('Jev endpoint requires HTTPS (localhost HTTP is allowed for tests)');
   const cacheNamespace = createHash('sha256').update(JSON.stringify([provider, model, endpoint.toString(), createHash('sha256').update(apiKey || '').digest('hex'), 'noul-v1'])).digest('hex');
   async function scorePairs(pairs, { purpose = 'relevance', signal } = {}) {
-    if (typeof apiKey !== 'string' || !apiKey.trim()) throw new JevUnavailable(`No ${provider === 'openrouter' ? 'OpenRouter' : 'Jev'} API key configured. Run jev-graph-search setup, set the provider environment key, or explicitly choose --offline.`);
+    if (typeof apiKey !== 'string' || !apiKey.trim()) throw new JevUnavailable(`No ${provider === 'openrouter' ? 'OpenRouter' : provider === 'openjev' ? 'OpenJEV' : 'Jev'} API key configured. Run jev-graph-search setup, set the provider environment key, or explicitly choose --offline.`);
     if (!rules[purpose]) throw new Error('Unsupported semantic scoring purpose');
     if (!Array.isArray(pairs) || pairs.length > 100) throw new Error('scorePairs requires at most 100 candidate pairs');
     const ids = new Set();

@@ -34,7 +34,7 @@ Commands:
   jev-graph-search analysis-health --input PATH [--page-types a,b --min-outgoing N]
   jev-graph-search migration-plan --input PATH [--output FILE]
   jev-graph-search verify-migration --plan FILE --input TARGET_SNAPSHOT
-  jev-graph-search setup [--provider typesafe|openrouter] [--from-env]
+  jev-graph-search setup [--provider typesafe|openrouter|openjev] [--from-env]
   jev-graph-search config
   jev-graph-search doctor
 
@@ -58,7 +58,7 @@ const COMMAND_HELP = {
   'analysis-health': 'jev-graph-search analysis-health --input PATH [--page-types a,b --min-outgoing N]\nCheck explicitly tagged analysis, strategy, and assessment pages.',
   'migration-plan': 'jev-graph-search migration-plan --input PATH [--output FILE]\nCreate a deterministic proposal; no target writes occur.',
   'verify-migration': 'jev-graph-search verify-migration --plan FILE --input TARGET_SNAPSHOT\nVerify a target snapshot against a migration proposal.',
-  setup: 'jev-graph-search setup [--provider typesafe|openrouter] [--from-env]\nPersist a hidden key prompt or an already-exported provider key.',
+  setup: 'jev-graph-search setup [--provider typesafe|openrouter|openjev] [--from-env]\nPersist a hidden key prompt or an already-exported provider key.',
   config: 'jev-graph-search config\nPrint redacted credential presence, provider, and model metadata.',
   doctor: 'jev-graph-search doctor\nPrint redacted local configuration checks; no live authentication is attempted.',
 };
@@ -236,8 +236,8 @@ async function loadCache() {
 }
 
 async function semanticRuntime(io, offline, { cacheEnabled = true, model, provider } = {}) {
-  if (provider !== undefined && provider !== 'typesafe' && provider !== 'openrouter') {
-    throw new Error('--provider must be typesafe or openrouter');
+  if (provider !== undefined && provider !== 'typesafe' && provider !== 'openrouter' && provider !== 'openjev') {
+    throw new Error('--provider must be typesafe, openrouter, or openjev');
   }
   const cacheModule = await loadCache();
   const cacheState = cacheModule
@@ -325,8 +325,8 @@ export async function finishCached(runtime, operation) {
 
 async function handleSetup(parsed, io) {
   const requestedProvider = parsed.options.provider;
-  if (requestedProvider !== undefined && requestedProvider !== 'typesafe' && requestedProvider !== 'openrouter') {
-    optionError('--provider must be typesafe or openrouter');
+  if (requestedProvider !== undefined && requestedProvider !== 'typesafe' && requestedProvider !== 'openrouter' && requestedProvider !== 'openjev') {
+    optionError('--provider must be typesafe, openrouter, or openjev');
   }
   let provider = requestedProvider;
   let apiKey;
@@ -334,11 +334,13 @@ async function handleSetup(parsed, io) {
     if (provider) {
       apiKey = provider === 'typesafe'
         ? (io.env.TYPESAFE_API_KEY || io.env.JEV_API_KEY)
-        : io.env.OPENROUTER_API_KEY;
+        : provider === 'openrouter'
+          ? io.env.OPENROUTER_API_KEY
+          : io.env.OPENJEV_API_KEY;
       if (!apiKey) throw new Error(`No ${provider} key is present in the environment; export it or run interactive setup`);
     } else {
       const config = await resolveConfig({ env: io.env });
-      if (!config.configured) throw new Error('No Jev credential is present in the environment; export TYPESAFE_API_KEY or OPENROUTER_API_KEY');
+      if (!config.configured) throw new Error('No Jev credential is present in the environment; export TYPESAFE_API_KEY, OPENROUTER_API_KEY, or OPENJEV_API_KEY');
       provider = config.provider;
       apiKey = config.apiKey;
     }
@@ -347,7 +349,7 @@ async function handleSetup(parsed, io) {
       throw new Error('Interactive setup needs a TTY. Export a provider key and rerun `jev-graph-search setup --from-env`.');
     }
     if (!provider) provider = await selectProvider(io);
-    apiKey = await readHidden(io, `${provider === 'typesafe' ? 'TypeSafe' : 'OpenRouter'} API key: `);
+    apiKey = await readHidden(io, `${provider === 'typesafe' ? 'TypeSafe' : provider === 'openrouter' ? 'OpenRouter' : 'OpenJEV'} API key: `);
     if (!apiKey) throw new Error('A non-empty API key is required');
   }
   const saved = await saveCredentials({ provider, apiKey }, { env: io.env });
@@ -358,6 +360,7 @@ function selectProvider(io) {
   const choices = [
     { label: 'TypeSafe', value: 'typesafe' },
     { label: 'OpenRouter', value: 'openrouter' },
+    { label: 'OpenJEV', value: 'openjev' },
   ];
   const { stdin } = io;
   const output = io.stderr || io.stdout;
@@ -458,7 +461,7 @@ function readHidden(io, prompt) {
 
 async function handleConfig(io, doctor = false) {
   const config = await resolveConfig({ env: io.env });
-  const model = config.provider === 'openrouter' ? 'typesafe/jev-1.13' : config.provider === 'typesafe' ? 'jev-latest' : undefined;
+  const model = config.provider === 'openrouter' ? 'typesafe/jev-1.13' : config.provider === 'openjev' ? 'openjev' : config.provider === 'typesafe' ? 'jev-latest' : undefined;
   if (!doctor) {
     printJson(io, redactedConfig({
       configured: config.configured,
@@ -478,6 +481,7 @@ async function handleConfig(io, doctor = false) {
     environment_keys: {
       typesafe: Boolean(io.env.TYPESAFE_API_KEY || io.env.JEV_API_KEY),
       openrouter: Boolean(io.env.OPENROUTER_API_KEY),
+      openjev: Boolean(io.env.OPENJEV_API_KEY),
     },
     notes: ['Configuration shape checked locally; no live authentication was attempted.'],
   });

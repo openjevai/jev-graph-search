@@ -3,7 +3,7 @@ import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const PROVIDERS = new Set(['typesafe', 'openrouter']);
+const PROVIDERS = new Set(['typesafe', 'openrouter', 'openjev']);
 const CREDENTIALS_FILE = 'credentials.env';
 const KEY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -66,7 +66,7 @@ function validSecret(value, field) {
 
 function validProvider(value) {
   if (typeof value !== 'string' || !PROVIDERS.has(value)) {
-    throw new ConfigError('Invalid JEVGRAPH_PROVIDER; expected typesafe or openrouter');
+    throw new ConfigError('Invalid JEVGRAPH_PROVIDER; expected typesafe, openrouter, or openjev');
   }
   return value;
 }
@@ -134,7 +134,10 @@ function pickProvider(env, saved) {
 }
 
 function keyForProvider(provider) {
-  return provider === 'typesafe' ? 'TYPESAFE_API_KEY' : 'OPENROUTER_API_KEY';
+  if (provider === 'typesafe') return 'TYPESAFE_API_KEY';
+  if (provider === 'openrouter') return 'OPENROUTER_API_KEY';
+  if (provider === 'openjev') return 'OPENJEV_API_KEY';
+  return undefined;
 }
 
 function configResult({ env, saved, configDir, filePath }) {
@@ -142,30 +145,32 @@ function configResult({ env, saved, configDir, filePath }) {
   const provider = providerCandidate.present ? validProvider(providerCandidate.value) : undefined;
   const envTypesafe = pickValue(env, Object.create(null), ['TYPESAFE_API_KEY', 'JEV_API_KEY']);
   const envOpenrouter = pickValue(env, Object.create(null), ['OPENROUTER_API_KEY']);
+  const envOpenjev = pickValue(env, Object.create(null), ['OPENJEV_API_KEY']);
   const typesafe = pickValue(env, saved, ['TYPESAFE_API_KEY', 'JEV_API_KEY']);
   const openrouter = pickValue(env, saved, ['OPENROUTER_API_KEY']);
+  const openjev = pickValue(env, saved, ['OPENJEV_API_KEY']);
   const hasTypesafe = typesafe.present;
   const hasOpenrouter = openrouter.present;
+  const hasOpenjev = openjev.present;
 
   // A key supplied by the process environment selects its provider when the
   // environment names only one provider. This keeps environment precedence
   // useful even when a saved file contains credentials for the other one.
-  const envProvider = envTypesafe.present && !envOpenrouter.present
-    ? 'typesafe'
-    : envOpenrouter.present && !envTypesafe.present
-      ? 'openrouter'
-      : undefined;
+  const envCount = (envTypesafe.present ? 1 : 0) + (envOpenrouter.present ? 1 : 0) + (envOpenjev.present ? 1 : 0);
+  const envProvider = envCount === 1
+    ? (envTypesafe.present ? 'typesafe' : envOpenrouter.present ? 'openrouter' : 'openjev')
+    : undefined;
+  const configuredProviders = [hasTypesafe && 'typesafe', hasOpenrouter && 'openrouter', hasOpenjev && 'openjev'].filter(Boolean);
   const selectedProvider = providerCandidate.source === 'env'
     ? provider
-    : envProvider ?? provider ?? (hasTypesafe && hasOpenrouter
-      ? undefined
-      : hasTypesafe ? 'typesafe' : hasOpenrouter ? 'openrouter' : undefined);
+    : envProvider ?? provider ?? (configuredProviders.length === 1 ? configuredProviders[0] : undefined);
 
-  if (!selectedProvider && hasTypesafe && hasOpenrouter) {
-    throw new ConfigError('Both Typesafe and OpenRouter credentials are configured; set JEVGRAPH_PROVIDER to choose one');
+  if (!selectedProvider && configuredProviders.length > 1) {
+    const names = configuredProviders.map(p => p === 'typesafe' ? 'TypeSafe' : p === 'openrouter' ? 'OpenRouter' : 'OpenJEV').join(' and ');
+    throw new ConfigError(`Both ${names} credentials are configured; set JEVGRAPH_PROVIDER to choose one`);
   }
 
-  const selected = selectedProvider === 'typesafe' ? typesafe : selectedProvider === 'openrouter' ? openrouter : undefined;
+  const selected = selectedProvider === 'typesafe' ? typesafe : selectedProvider === 'openrouter' ? openrouter : selectedProvider === 'openjev' ? openjev : undefined;
   const apiKey = selected?.present ? validSecret(selected.value, `${selectedProvider} API key`) : undefined;
 
   return {
@@ -176,6 +181,7 @@ function configResult({ env, saved, configDir, filePath }) {
     // callers; redactedConfig removes their values before display.
     typesafeApiKey: hasTypesafe ? validSecret(typesafe.value, 'Typesafe API key') : undefined,
     openrouterApiKey: hasOpenrouter ? validSecret(openrouter.value, 'OpenRouter API key') : undefined,
+    openjevApiKey: hasOpenjev ? validSecret(openjev.value, 'OpenJEV API key') : undefined,
     source: selected?.source,
     configDir,
     credentialsPath: filePath,
@@ -213,25 +219,27 @@ function readCredentialUpdates(credentials, existing) {
   const directTypesafe = candidate(credentials, ['typesafeApiKey', 'TYPESAFE_API_KEY']);
   const aliasTypesafe = candidate(credentials, ['jevApiKey', 'JEV_API_KEY']);
   const openrouter = candidate(credentials, ['openrouterApiKey', 'OPENROUTER_API_KEY']);
+  const openjev = candidate(credentials, ['openjevApiKey', 'OPENJEV_API_KEY']);
   const generic = candidate(credentials, ['apiKey']);
   const updates = Object.create(null);
 
   if (directTypesafe.present) updates.TYPESAFE_API_KEY = validSecret(directTypesafe.value, 'Typesafe API key');
   if (aliasTypesafe.present) updates.JEV_API_KEY = validSecret(aliasTypesafe.value, 'JEV API key');
   if (openrouter.present) updates.OPENROUTER_API_KEY = validSecret(openrouter.value, 'OpenRouter API key');
+  if (openjev.present) updates.OPENJEV_API_KEY = validSecret(openjev.value, 'OpenJEV API key');
 
   if (generic.present) {
     const genericProvider = provider ??
       (existing.JEVGRAPH_PROVIDER && PROVIDERS.has(existing.JEVGRAPH_PROVIDER) ? existing.JEVGRAPH_PROVIDER : undefined);
     if (!genericProvider) {
-      throw new ConfigError('An apiKey requires provider: typesafe or openrouter');
+      throw new ConfigError('An apiKey requires provider: typesafe, openrouter, or openjev');
     }
     updates[keyForProvider(genericProvider)] = validSecret(generic.value, `${genericProvider} API key`);
   }
 
-  const suppliedProviderKeys = [directTypesafe.present || aliasTypesafe.present, openrouter.present];
-  if (!provider && suppliedProviderKeys[0] && suppliedProviderKeys[1]) {
-    throw new ConfigError('Both Typesafe and OpenRouter credentials were supplied; set provider to choose one');
+  const suppliedProviders = [directTypesafe.present || aliasTypesafe.present, openrouter.present, openjev.present];
+  if (!provider && suppliedProviders.filter(Boolean).length > 1) {
+    throw new ConfigError('Multiple provider credentials were supplied; set provider to choose one');
   }
   if (explicitProvider.present) updates.JEVGRAPH_PROVIDER = provider;
   if (Object.keys(updates).length === 0) {
@@ -242,7 +250,7 @@ function readCredentialUpdates(credentials, existing) {
 
 function serializeEnv(values) {
   const ordered = [];
-  for (const key of ['JEVGRAPH_PROVIDER', 'TYPESAFE_API_KEY', 'JEV_API_KEY', 'OPENROUTER_API_KEY']) {
+  for (const key of ['JEVGRAPH_PROVIDER', 'TYPESAFE_API_KEY', 'JEV_API_KEY', 'OPENROUTER_API_KEY', 'OPENJEV_API_KEY']) {
     if (Object.prototype.hasOwnProperty.call(values, key)) ordered.push(key);
   }
   for (const key of Object.keys(values).sort()) {
@@ -289,7 +297,7 @@ export async function saveCredentials(credentials, options = {}) {
     path: filePath,
     configDir: getConfigDir(options),
     provider: merged.JEVGRAPH_PROVIDER,
-    configured: Boolean(merged.TYPESAFE_API_KEY || merged.JEV_API_KEY || merged.OPENROUTER_API_KEY),
+    configured: Boolean(merged.TYPESAFE_API_KEY || merged.JEV_API_KEY || merged.OPENROUTER_API_KEY || merged.OPENJEV_API_KEY),
   };
 }
 
